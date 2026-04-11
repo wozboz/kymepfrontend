@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { API_BASE_URL } from '$env/static/private';
+import { API_BASE_URL } from '$env/dynamic/private';
 
 const API_BASE = API_BASE_URL ?? 'http://localhost:8000';
 

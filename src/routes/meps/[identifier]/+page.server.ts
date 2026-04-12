@@ -1,8 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { API_BASE_URL } from '$env/dynamic/private';
-
-const API_BASE = API_BASE_URL ?? 'http://localhost:8000';
+const API_BASE = process.env.API_BASE_URL ?? 'http://localhost:8000';
 
 export const load: PageServerLoad = async ({ params, fetch }) => {
 	const { identifier } = params;

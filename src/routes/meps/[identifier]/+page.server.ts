@@ -4,6 +4,7 @@ const API_BASE = process.env.API_BASE_URL ?? 'http://localhost:8000';
 
 export const load: PageServerLoad = async ({ params, fetch }) => {
 	const { identifier } = params;
+	if (!/^\d+$/.test(identifier)) error(400, 'Invalid MEP identifier');
 
 	const [profileRes, votesRes, summaryRes] = await Promise.all([
 		fetch(`${API_BASE}/meps/${identifier}`),

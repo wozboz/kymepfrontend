@@ -33,7 +33,11 @@
 	}
 
 	function voteLabel(vote: any): string {
-		return vote.label || 'Untitled vote';
+		const label = vote.label || 'Untitled vote';
+		if (vote.proposal_label && vote.proposal_label !== label) {
+			return `${vote.proposal_label} \u2013 ${label}`;
+		}
+		return label;
 	}
 
 	function subvoteLabel(sv: any): string {

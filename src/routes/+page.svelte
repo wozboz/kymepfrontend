@@ -1,61 +1,70 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { untrack } from 'svelte';
 	import type { PageData } from './$types';
+	import GroupBreakdownChart from '$lib/GroupBreakdownChart.svelte';
 
 	let { data }: { data: PageData } = $props();
 	const votes = $derived(data.votes);
 
 	const GROUPS = ['ECR', 'ESN', 'NI', 'PfE', 'PPE', 'Renew', 'S&D', 'The Left', 'Verts/ALE'];
 
-	let q         = $state(data.q ?? '');
-	let date_from = $state(data.date_from ?? '');
-	let date_to   = $state(data.date_to ?? '');
-	let group     = $state(data.group ?? '');
+	let q             = $state(untrack(() => data.q) ?? '');
+	let date_from     = $state(untrack(() => data.date_from) ?? '');
+	let date_to       = $state(untrack(() => data.date_to) ?? '');
+	let group         = $state(untrack(() => data.group) ?? '');
+	let proposals_only = $state(untrack(() => data.proposals_only) ?? true);
 
 	let debounceTimer: ReturnType<typeof setTimeout>;
 
-	// Expand/collapse sub-votes
+	// Expand/collapse vote items
 	let expanded = $state(new Set<string>());
 	let subvoteCache = $state(new Map<string, any[]>());
+	let groupCache = $state(new Map<string, any[]>());
 	let loadingVotes = $state(new Set<string>());
 
-	async function toggleSubvotes(activityId: string) {
-		if (expanded.has(activityId)) {
-			expanded.delete(activityId);
+	async function toggleVoteItems(key: string, docId: string | null, activityId: string) {
+		if (expanded.has(key)) {
+			expanded.delete(key);
 			expanded = new Set(expanded);
 			return;
 		}
-		expanded.add(activityId);
+		expanded.add(key);
 		expanded = new Set(expanded);
-		if (!subvoteCache.has(activityId)) {
-			loadingVotes.add(activityId);
+		if (!subvoteCache.has(key)) {
+			loadingVotes.add(key);
 			loadingVotes = new Set(loadingVotes);
-			const res = await fetch(`/api/votes/${activityId}/subvotes`);
-			subvoteCache.set(activityId, res.ok ? await res.json() : []);
+			const itemsUrl = docId
+				? `/api/votes/by-doc/${encodeURIComponent(docId)}`
+				: `/api/votes/${key}/subvotes`;
+			const [itemsRes, groupsRes] = await Promise.all([
+				fetch(itemsUrl),
+				fetch(`/api/votes/${activityId}/groups`)
+			]);
+			subvoteCache.set(key, itemsRes.ok ? await itemsRes.json() : []);
+			groupCache.set(key, groupsRes.ok ? await groupsRes.json() : []);
 			subvoteCache = new Map(subvoteCache);
-			loadingVotes.delete(activityId);
+			groupCache = new Map(groupCache);
+			loadingVotes.delete(key);
 			loadingVotes = new Set(loadingVotes);
 		}
 	}
 
-	function subvoteLabel(sv: any): string {
-		if (sv.sub_label) {
-			const parts = sv.sub_label.split(' – ');
-			return parts.length >= 3 ? parts.slice(2).join(' – ') : sv.sub_label;
-		}
-		if (sv.vote_decision_id) {
-			const match = sv.vote_decision_id.match(/DEC-\w+$/);
-			if (match) return match[0];
-		}
-		return 'Sub-vote';
+	function voteTitle(vote: any): string {
+		return vote.proposal_label ?? vote.label ?? 'Untitled vote';
+	}
+
+	function voteItemLabel(item: any): string {
+		return item.label ?? '—';
 	}
 
 	function applyFilters() {
 		const params = new URLSearchParams();
-		if (q)         params.set('q', q);
-		if (date_from) params.set('date_from', date_from);
-		if (date_to)   params.set('date_to', date_to);
-		if (group)     params.set('group', group);
+		if (q)              params.set('q', q);
+		if (date_from)      params.set('date_from', date_from);
+		if (date_to)        params.set('date_to', date_to);
+		if (group)          params.set('group', group);
+		if (!proposals_only) params.set('proposals_only', 'false');
 		const qs = params.toString();
 		goto(qs ? `/?${qs}` : '/', { replaceState: true });
 	}
@@ -80,11 +89,11 @@
 	}
 
 	function clearFilters() {
-		q = ''; date_from = ''; date_to = ''; group = '';
+		q = ''; date_from = ''; date_to = ''; group = ''; proposals_only = true;
 		goto('/', { replaceState: true });
 	}
 
-	const hasFilters = $derived(!!(q || date_from || date_to || group));
+	const hasFilters = $derived(!!(q || date_from || date_to || group || !proposals_only));
 </script>
 
 <svelte:head>
@@ -93,8 +102,13 @@
 
 <main>
 	<header class="page-header">
-		<h1>Vote Explorer</h1>
-		<p class="page-subtitle">Browse and search recent European Parliament votes</p>
+		<div class="page-header-top">
+			<div>
+				<h1>Vote Explorer</h1>
+				<p class="page-subtitle">Browse and search recent European Parliament votes</p>
+			</div>
+			<a href="/meps" class="meps-link">Browse MEPs →</a>
+		</div>
 	</header>
 
 	<!-- Filters -->
@@ -126,6 +140,10 @@
 					{/each}
 				</select>
 			</div>
+			<label class="filter-toggle">
+				<input type="checkbox" bind:checked={proposals_only} onchange={applyFilters} />
+				Proposals only
+			</label>
 			{#if hasFilters}
 				<button class="clear-btn" onclick={clearFilters}>Clear filters</button>
 			{/if}
@@ -147,16 +165,19 @@
 									{outcomeLabel(vote.decision_outcome)}
 								</span>
 							{/if}
-							<button
-								class="expand-btn"
-								onclick={() => toggleSubvotes(vote.activity_id)}
-								aria-label={expanded.has(vote.activity_id) ? 'Collapse sub-votes' : 'Expand sub-votes'}
-							>
-								{expanded.has(vote.activity_id) ? '▲' : '▼'}
-							</button>
+							{#if vote.doc_id}
+								{@const key = vote.doc_id}
+								<button
+									class="expand-btn"
+									onclick={() => toggleVoteItems(key, vote.doc_id, vote.activity_id)}
+									aria-label={expanded.has(key) ? 'Collapse votes' : 'Expand votes'}
+								>
+									{expanded.has(key) ? '▲' : '▼'}
+								</button>
+							{/if}
 						</div>
 
-						<h2 class="vote-title">{vote.label ?? 'Untitled vote'}</h2>
+						<h2 class="vote-title">{voteTitle(vote)}</h2>
 
 						{#if vote.summary}
 							<p class="vote-summary">{vote.summary}</p>
@@ -192,30 +213,39 @@
 						{/if}
 					</div>
 
-					{#if expanded.has(vote.activity_id)}
+					{#if vote.doc_id && expanded.has(vote.doc_id)}
+						{@const key = vote.doc_id}
 						<div class="subvotes-panel">
-							{#if loadingVotes.has(vote.activity_id)}
+							{#if loadingVotes.has(key)}
 								<p class="subvotes-empty">Loading…</p>
 							{:else}
-								{@const subvotes = subvoteCache.get(vote.activity_id) ?? []}
-								{#if subvotes.length <= 1}
-									<p class="subvotes-empty">No sub-votes available.</p>
+								{@const groups = groupCache.get(key) ?? []}
+								{#if groups.length > 0}
+									<div class="group-chart-wrap">
+										<GroupBreakdownChart data={groups} />
+									</div>
+								{/if}
+								{@const items = subvoteCache.get(key) ?? []}
+								{#if items.length === 0}
+									<p class="subvotes-empty">No votes available.</p>
 								{:else}
-									{#each subvotes as sv}
+									{#each items as item}
 										<div class="subvote-row">
 											<div class="subvote-body">
-												<span class="subvote-label">{subvoteLabel(sv)}</span>
-												{#if sv.decision_outcome}
-													<span class="subvote-meta">{outcomeLabel(sv.decision_outcome)}</span>
+												<span class="subvote-label">{voteItemLabel(item)}</span>
+												{#if item.decision_outcome}
+													<span class="subvote-meta {isAdopted(item.decision_outcome) ? 'meta-adopted' : 'meta-rejected'}">
+														{outcomeLabel(item.decision_outcome)}
+													</span>
 												{/if}
 											</div>
-											{#if sv.votes_for != null}
+											{#if item.votes_for != null}
 												<span class="subvote-counts">
-													<span class="count-for">{sv.votes_for}</span>
+													<span class="count-for">{item.votes_for}</span>
 													·
-													<span class="count-against">{sv.votes_against}</span>
+													<span class="count-against">{item.votes_against}</span>
 													·
-													<span class="count-abstain">{sv.votes_abstain}</span>
+													<span class="count-abstain">{item.votes_abstain}</span>
 												</span>
 											{/if}
 										</div>
@@ -242,6 +272,21 @@
 	.page-header {
 		margin-bottom: 1.5rem;
 	}
+	.page-header-top {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 12px;
+	}
+	.meps-link {
+		font-size: 13px;
+		font-weight: 500;
+		color: #6366f1;
+		text-decoration: none;
+		white-space: nowrap;
+		padding-top: 4px;
+	}
+	.meps-link:hover { text-decoration: underline; }
 	.page-header h1 {
 		margin: 0 0 0.25rem;
 		font-size: 1.75rem;
@@ -307,6 +352,19 @@
 	.filter-group select:focus {
 		outline: none;
 		border-color: #6b7280;
+	}
+	.filter-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		font-size: 0.82rem;
+		color: #374151;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.filter-toggle input {
+		cursor: pointer;
+		accent-color: #374151;
 	}
 	.clear-btn {
 		background: none;
@@ -383,6 +441,11 @@
 		flex-direction: column;
 		gap: 0.4rem;
 	}
+	.group-chart-wrap {
+		padding: 0.5rem 0 0.25rem;
+		border-bottom: 1px solid #e5e7eb;
+		margin-bottom: 0.25rem;
+	}
 	.subvotes-empty {
 		font-size: 0.78rem;
 		color: #9ca3af;
@@ -412,6 +475,8 @@
 		font-size: 0.72rem;
 		color: #9ca3af;
 	}
+	.meta-adopted  { color: #065f46; }
+	.meta-rejected { color: #991b1b; }
 	.subvote-counts {
 		font-size: 0.72rem;
 		color: #9ca3af;

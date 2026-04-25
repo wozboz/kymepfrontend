@@ -102,13 +102,8 @@
 
 <main>
 	<header class="page-header">
-		<div class="page-header-top">
-			<div>
-				<h1>Vote Explorer</h1>
-				<p class="page-subtitle">Browse and search recent European Parliament votes</p>
-			</div>
-			<a href="/meps" class="meps-link">Browse MEPs →</a>
-		</div>
+		<h1>Vote Explorer</h1>
+		<p class="page-subtitle">Browse and search recent European Parliament votes</p>
 	</header>
 
 	<!-- Filters -->
@@ -272,21 +267,6 @@
 	.page-header {
 		margin-bottom: 1.5rem;
 	}
-	.page-header-top {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 12px;
-	}
-	.meps-link {
-		font-size: 13px;
-		font-weight: 500;
-		color: #6366f1;
-		text-decoration: none;
-		white-space: nowrap;
-		padding-top: 4px;
-	}
-	.meps-link:hover { text-decoration: underline; }
 	.page-header h1 {
 		margin: 0 0 0.25rem;
 		font-size: 1.75rem;

@@ -40,7 +40,6 @@
 
 <main>
 	<header>
-		<a href="/" class="back-link">← Votes</a>
 		<h1>Members of the European Parliament</h1>
 		<p class="subtitle">{data.meps.length} MEPs in the current term</p>
 	</header>
@@ -98,15 +97,6 @@
 	header {
 		margin-bottom: 24px;
 	}
-
-	.back-link {
-		display: inline-block;
-		font-size: 13px;
-		color: #6b7280;
-		text-decoration: none;
-		margin-bottom: 12px;
-	}
-	.back-link:hover { color: #111; }
 
 	h1 {
 		font-size: 22px;
